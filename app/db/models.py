@@ -60,6 +60,15 @@ class VideoAsset(Base):
     is_valid: Mapped[bool] = mapped_column(default=False)
     validation_error: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Phase 2 — quality gate output
+    processed_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    quality_score_pre: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quality_score_post: Mapped[float | None] = mapped_column(Float, nullable=True)
+    was_upscaled: Mapped[bool] = mapped_column(default=False)
+    was_undistorted: Mapped[bool] = mapped_column(default=False)
+    ssim_gain: Mapped[float | None] = mapped_column(Float, nullable=True)
+    psnr_gain: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     incident: Mapped["Incident"] = relationship(back_populates="video_assets")

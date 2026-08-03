@@ -4,12 +4,14 @@ from fastapi import FastAPI
 
 from app.api.ingest import router as ingest_router
 from app.api.jobs import router as jobs_router
+from app.core.tracing import configure_tracing
 from app.db.base import init_db
 from app.jobs.queue import start_worker, stop_worker
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_tracing()
     init_db()
     start_worker()
     yield

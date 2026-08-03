@@ -84,6 +84,7 @@ async def ingest(
         {
             "incident_id": incident.id,
             "job_id": job.id,
+            "video_asset_id": video_asset.id,
             "video_path": str(video_path),
             "sensor_log_path": sensor_log_path,
             "device_id": device_id,

@@ -35,11 +35,12 @@ async def _worker() -> None:
         job_id = state["job_id"]
         try:
             _set_status(job_id, "running")
-            result = await asyncio.to_thread(compiled_graph.invoke, state)
-            if result.get("ingest_ok"):
-                _set_status(job_id, "completed")
+            config = {"run_name": f"investigation-{state['incident_id']}", "metadata": {"job_id": job_id}}
+            result = await asyncio.to_thread(compiled_graph.invoke, state, config)
+            if result.get("error"):
+                _set_status(job_id, "failed", result["error"])
             else:
-                _set_status(job_id, "failed", result.get("error") or "unknown graph failure")
+                _set_status(job_id, "completed")
         except Exception as exc:  # noqa: BLE001 - job worker must never die on a bad job
             logger.exception("job %s failed", job_id)
             _set_status(job_id, "failed", str(exc))
