@@ -39,12 +39,16 @@ def test_ingest_valid_clip_queues_and_completes_job(client, tmp_path):
     assert body["job"]["status"] == "queued"
 
     job_id = body["job"]["id"]
-    for _ in range(20):
-        status = client.get(f"/jobs/{job_id}").json()["status"]
+    # generous timeout: the full pipeline now runs quality-gate + YOLO
+    # detection/tracking + kinematics fusion, and the first run also
+    # downloads YOLO weights.
+    for _ in range(300):
+        job = client.get(f"/jobs/{job_id}").json()
+        status = job["status"]
         if status in ("completed", "failed"):
             break
-        time.sleep(0.1)
-    assert status == "completed"
+        time.sleep(0.2)
+    assert status == "completed", job.get("error")
 
 
 def test_ingest_rejects_corrupt_file(client, tmp_path):

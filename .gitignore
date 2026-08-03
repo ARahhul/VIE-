@@ -4,5 +4,6 @@ __pycache__/
 .env
 *.db
 .pytest_cache/
+*.pt
 uploads/*
 !uploads/.gitkeep

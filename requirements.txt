@@ -9,6 +9,8 @@ langsmith==0.10.15
 langfuse==2.57.1
 opencv-python-headless==4.10.0.84
 scikit-image==0.24.0
+ultralytics==8.3.55
+lap==0.5.13
 python-dotenv==1.0.1
 pytest==8.3.4
 httpx==0.28.1

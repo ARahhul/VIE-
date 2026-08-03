@@ -24,4 +24,10 @@ class InvestigationState(TypedDict, total=False):
     was_undistorted: bool
     was_upscaled: bool
 
+    tracks_path: str | None
+    num_tracks: int | None
+
+    kinematics_path: str | None
+    kinematics_method: str | None
+
     error: str | None

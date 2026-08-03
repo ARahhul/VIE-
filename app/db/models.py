@@ -69,6 +69,14 @@ class VideoAsset(Base):
     ssim_gain: Mapped[float | None] = mapped_column(Float, nullable=True)
     psnr_gain: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Phase 3 — detection & tracking output
+    tracks_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    num_tracks: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Phase 4 — kinematics fusion output
+    kinematics_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    kinematics_method: Mapped[str | None] = mapped_column(String, nullable=True)  # fused | vision-only | mixed | none
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     incident: Mapped["Incident"] = relationship(back_populates="video_assets")
