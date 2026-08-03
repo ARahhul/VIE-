@@ -30,4 +30,9 @@ class InvestigationState(TypedDict, total=False):
     kinematics_path: str | None
     kinematics_method: str | None
 
+    event_window_start_s: float | None
+    event_window_end_s: float | None
+    event_window_source: str | None
+    event_window_confidence: str | None
+
     error: str | None

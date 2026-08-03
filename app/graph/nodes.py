@@ -6,6 +6,7 @@ import cv2
 from app.core.config import settings
 from app.db.base import SessionLocal
 from app.db.models import DeviceProfile, VideoAsset
+from app.events.event_window import select_event_window
 from app.graph.state import InvestigationState
 from app.kinematics.absolute import fuse_absolute_speed
 from app.kinematics.ego import compute_ego_motion
@@ -65,6 +66,41 @@ def quality_gate_node(state: InvestigationState) -> InvestigationState:
         }
     except Exception as exc:  # noqa: BLE001 - surfaced via state, job worker marks the job failed
         return {**state, "error": f"quality_gate failed: {exc}"}
+    finally:
+        db.close()
+
+
+def event_detection_node(state: InvestigationState) -> InvestigationState:
+    """Selects the event window: sensor-log impact timestamp when available
+    (exact, hard trigger), optical-flow-residual spike as the fallback.
+    """
+    if state.get("error"):
+        return state
+
+    db = SessionLocal()
+    try:
+        samples = load_sensor_log(state["sensor_log_path"]) if state.get("sensor_log_path") else None
+        video_path = state.get("processed_video_path") or state["video_path"]
+
+        window = select_event_window(video_path, samples)
+
+        video_asset = db.get(VideoAsset, state["video_asset_id"])
+        if video_asset is not None:
+            video_asset.event_window_start_s = window.start_s
+            video_asset.event_window_end_s = window.end_s
+            video_asset.event_window_source = window.source
+            video_asset.event_window_confidence = window.confidence
+            db.commit()
+
+        return {
+            **state,
+            "event_window_start_s": window.start_s,
+            "event_window_end_s": window.end_s,
+            "event_window_source": window.source,
+            "event_window_confidence": window.confidence,
+        }
+    except Exception as exc:  # noqa: BLE001 - surfaced via state, job worker marks the job failed
+        return {**state, "error": f"event_detection failed: {exc}"}
     finally:
         db.close()
 

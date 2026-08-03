@@ -77,6 +77,12 @@ class VideoAsset(Base):
     kinematics_path: Mapped[str | None] = mapped_column(String, nullable=True)
     kinematics_method: Mapped[str | None] = mapped_column(String, nullable=True)  # fused | vision-only | mixed | none
 
+    # Phase 5 — event window
+    event_window_start_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    event_window_end_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    event_window_source: Mapped[str | None] = mapped_column(String, nullable=True)  # sensor_log | optical_flow_residual | none
+    event_window_confidence: Mapped[str | None] = mapped_column(String, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     incident: Mapped["Incident"] = relationship(back_populates="video_assets")
