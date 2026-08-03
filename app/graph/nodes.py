@@ -13,8 +13,12 @@ from app.kinematics.ego import compute_ego_motion
 from app.kinematics.relative import compute_relative_motion
 from app.kinematics.sensor_log import load_sensor_log
 from app.llm.backends import get_backend
+from app.llm.schemas import InvestigationNarrative
 from app.perception.detect_track import detect_and_track, load_tracks
 from app.preprocessing.pipeline import run_quality_gate
+from app.report.build import build_report_context
+from app.report.render import render_html, render_pdf
+from app.verification.claims import verify_narrative
 
 
 def ingest_node(state: InvestigationState) -> InvestigationState:
@@ -260,5 +264,77 @@ def video_llm_reasoning_node(state: InvestigationState) -> InvestigationState:
             video_asset.narrative_error = str(exc)
             db.commit()
         return {**state, "narrative_available": False, "narrative_error": str(exc)}
+    finally:
+        db.close()
+
+
+def claim_verification_node(state: InvestigationState) -> InvestigationState:
+    """Cross-checks every narrative claim against tracks/timing data.
+
+    Mechanical, not another LLM call — this is what catches the LLM
+    inventing a track or a time that doesn't exist. Ungrounded claims are
+    downgraded to low confidence and annotated, not dropped.
+    """
+    if state.get("error"):
+        return state
+    if not state.get("narrative_available"):
+        return {**state, "narrative_verified": False}
+
+    db = SessionLocal()
+    try:
+        with open(state["narrative_path"]) as f:
+            narrative = InvestigationNarrative.model_validate_json(f.read())
+
+        tracks = load_tracks(state["tracks_path"]) if state.get("tracks_path") else []
+        known_track_ids = {t.track_id for t in tracks}
+
+        video_path = state.get("processed_video_path") or state["video_path"]
+        cap = cv2.VideoCapture(video_path)
+        fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+        frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        cap.release()
+        duration_s = frame_count / fps if fps > 0 else 0.0
+
+        verified = verify_narrative(narrative, known_track_ids, duration_s)
+        with open(state["narrative_path"], "w") as f:
+            f.write(verified.model_dump_json())
+
+        video_asset = db.get(VideoAsset, state["video_asset_id"])
+        if video_asset is not None:
+            video_asset.narrative_verified = True
+            db.commit()
+
+        return {**state, "narrative_verified": True}
+    except Exception as exc:  # noqa: BLE001 - surfaced via state, job worker marks the job failed
+        return {**state, "error": f"claim_verification failed: {exc}"}
+    finally:
+        db.close()
+
+
+def report_generation_node(state: InvestigationState) -> InvestigationState:
+    """Renders the structured investigation report (PRD Section 7 schema) to PDF."""
+    if state.get("error"):
+        return state
+
+    db = SessionLocal()
+    try:
+        video_asset = db.get(VideoAsset, state["video_asset_id"])
+        if video_asset is None:
+            return {**state, "error": "report_generation failed: video_asset not found"}
+
+        incident_dir = settings.upload_dir / state["incident_id"]
+        ctx = build_report_context(video_asset, incident_dir / "evidence", state.get("sensor_log_path"))
+        html = render_html(ctx)
+        pdf_bytes = render_pdf(html)
+
+        report_path = incident_dir / "report.pdf"
+        report_path.write_bytes(pdf_bytes)
+
+        video_asset.report_path = str(report_path)
+        db.commit()
+
+        return {**state, "report_path": str(report_path)}
+    except Exception as exc:  # noqa: BLE001 - surfaced via state, job worker marks the job failed
+        return {**state, "error": f"report_generation failed: {exc}"}
     finally:
         db.close()

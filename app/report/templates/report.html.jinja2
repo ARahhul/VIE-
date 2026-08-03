@@ -1,0 +1,114 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>VigilNetra Investigation Report — {{ ctx.incident_id }}</title>
+<style>
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 2em; }
+  h1 { font-size: 18pt; border-bottom: 2px solid #1F4E79; padding-bottom: 6px; }
+  h2 { font-size: 13pt; color: #1F4E79; margin-top: 1.6em; }
+  table { width: 100%; border-collapse: collapse; margin-top: 0.5em; }
+  th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; font-size: 9.5pt; }
+  th { background: #DCE6F1; }
+  .disclaimer { margin-top: 2em; padding: 10px; border: 1px solid #d99; background: #fff4f4; font-size: 9pt; }
+  .gap-note { font-style: italic; color: #555; }
+  .evidence-frame { display: inline-block; margin: 6px; text-align: center; }
+  .evidence-frame img { max-width: 220px; border: 1px solid #999; }
+  .confidence-high { color: #146c2e; }
+  .confidence-medium { color: #8a6d00; }
+  .confidence-low { color: #b3261e; }
+</style>
+</head>
+<body>
+  <h1>VigilNetra Investigation Report</h1>
+  <p>Incident: {{ ctx.incident_id }}</p>
+
+  <h2>Executive Summary</h2>
+  <p>{{ ctx.executive_summary }}</p>
+
+  <h2>Event Timeline</h2>
+  {% if ctx.event_timeline %}
+  <table>
+    <tr><th>When</th><th>Who</th><th>What</th><th>Where</th><th>How</th><th>Confidence</th></tr>
+    {% for claim in ctx.event_timeline %}
+    <tr>
+      <td>{{ "%.1f"|format(claim.when_start_s) }}s&ndash;{{ "%.1f"|format(claim.when_end_s) }}s</td>
+      <td>{{ claim.who }}</td>
+      <td>{{ claim.what }}</td>
+      <td>{{ claim.where }}</td>
+      <td>{{ claim.how }}</td>
+      <td class="confidence-{{ claim.confidence }}">{{ claim.confidence }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="gap-note">No timestamped event narrative is available for this report.</p>
+  {% endif %}
+
+  <h2>Vehicle Kinematics</h2>
+  {% if ctx.kinematics %}
+  <table>
+    <tr><th>Actor</th><th>Class</th><th>Min speed (m/s)</th><th>Max speed (m/s)</th><th>Mean speed (m/s)</th><th>Method</th><th>Confidence</th></tr>
+    {% for row in ctx.kinematics %}
+    <tr>
+      <td>{{ row.actor }}</td>
+      <td>{{ row.class_name or "-" }}</td>
+      <td>{{ "%.1f"|format(row.min_speed_mps) }}</td>
+      <td>{{ "%.1f"|format(row.max_speed_mps) }}</td>
+      <td>{{ "%.1f"|format(row.mean_speed_mps) }}</td>
+      <td>{{ row.method }}</td>
+      <td class="confidence-{{ row.confidence }}">{{ row.confidence }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="gap-note">No kinematics data is available for this report.</p>
+  {% endif %}
+
+  <h2>Contributing Factors</h2>
+  {% if ctx.contributing_factors %}
+  <ul>{% for f in ctx.contributing_factors %}<li>{{ f }}</li>{% endfor %}</ul>
+  {% else %}
+  <p class="gap-note">No contributing factors were derived for this report.</p>
+  {% endif %}
+
+  <h2>Driver State Observations</h2>
+  {% if ctx.driver_state_observations %}
+  <ul>{% for o in ctx.driver_state_observations %}<li>{{ o }}</li>{% endfor %}</ul>
+  {% else %}
+  <p class="gap-note">{{ ctx.driver_state_note }}</p>
+  {% endif %}
+
+  <h2>Evidence Frames</h2>
+  {% if ctx.evidence_frames %}
+  <div>
+    {% for frame in ctx.evidence_frames %}
+    <div class="evidence-frame">
+      <img src="{{ frame.image_path }}">
+      <div>track {{ frame.track_id }} @ {{ "%.1f"|format(frame.timestamp_s) }}s</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="gap-note">No evidence frames were extracted for this report.</p>
+  {% endif %}
+
+  <h2>Confidence Appendix</h2>
+  {% if ctx.confidence_appendix %}
+  <table>
+    <tr><th>Claim</th><th>Confidence</th><th>Source module</th></tr>
+    {% for entry in ctx.confidence_appendix %}
+    <tr>
+      <td>{{ entry.claim }}</td>
+      <td class="confidence-{{ entry.confidence }}">{{ entry.confidence }}</td>
+      <td>{{ entry.source_module }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="gap-note">No claims to map to confidence levels.</p>
+  {% endif %}
+
+  <div class="disclaimer">{{ ctx.disclaimer }}</div>
+</body>
+</html>

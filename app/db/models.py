@@ -88,6 +88,12 @@ class VideoAsset(Base):
     narrative_available: Mapped[bool] = mapped_column(default=False)
     narrative_error: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Phase 8 — claim verification
+    narrative_verified: Mapped[bool] = mapped_column(default=False)
+
+    # Phase 7 — report generation
+    report_path: Mapped[str | None] = mapped_column(String, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     incident: Mapped["Incident"] = relationship(back_populates="video_assets")

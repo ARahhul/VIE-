@@ -16,6 +16,7 @@ class EventClaim(BaseModel):
     where: str = Field(description="spatial description, e.g. 'intersection, ego's lane'")
     how: str = Field(description="the mechanism/manner, plain language")
     confidence: str = Field(description="high | medium | low")
+    grounded: bool = Field(default=True, description="set by claim verification, not the LLM")
 
 
 class InvestigationNarrative(BaseModel):

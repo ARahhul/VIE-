@@ -38,5 +38,8 @@ class InvestigationState(TypedDict, total=False):
     narrative_path: str | None
     narrative_available: bool
     narrative_error: str | None
+    narrative_verified: bool
+
+    report_path: str | None
 
     error: str | None
