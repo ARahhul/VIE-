@@ -83,6 +83,11 @@ class VideoAsset(Base):
     event_window_source: Mapped[str | None] = mapped_column(String, nullable=True)  # sensor_log | optical_flow_residual | none
     event_window_confidence: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Phase 6 — video-LLM narrative (graceful no-op without a configured backend)
+    narrative_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    narrative_available: Mapped[bool] = mapped_column(default=False)
+    narrative_error: Mapped[str | None] = mapped_column(String, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     incident: Mapped["Incident"] = relationship(back_populates="video_assets")

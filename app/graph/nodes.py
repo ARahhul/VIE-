@@ -12,6 +12,7 @@ from app.kinematics.absolute import fuse_absolute_speed
 from app.kinematics.ego import compute_ego_motion
 from app.kinematics.relative import compute_relative_motion
 from app.kinematics.sensor_log import load_sensor_log
+from app.llm.backends import get_backend
 from app.perception.detect_track import detect_and_track, load_tracks
 from app.preprocessing.pipeline import run_quality_gate
 
@@ -202,5 +203,62 @@ def kinematics_node(state: InvestigationState) -> InvestigationState:
         }
     except Exception as exc:  # noqa: BLE001 - surfaced via state, job worker marks the job failed
         return {**state, "error": f"kinematics failed: {exc}"}
+    finally:
+        db.close()
+
+
+def video_llm_reasoning_node(state: InvestigationState) -> InvestigationState:
+    """Two-pass grounded narrative from the video-LLM, injected with the
+    perception-layer data (tracks, kinematics) so it reasons over numbers the
+    pipeline already trusts rather than eyeballing the footage for speed.
+
+    Degrades gracefully: without a configured backend (no API key yet), this
+    is a no-op rather than a failure — narrative_available=False, no error,
+    job still completes. A configured backend that errors at call time is
+    also non-fatal, recorded in narrative_error instead of failing the job.
+    """
+    if state.get("error"):
+        return state
+
+    backend = get_backend()
+    if backend is None:
+        return {**state, "narrative_available": False, "narrative_error": None}
+
+    db = SessionLocal()
+    try:
+        tracks = state.get("tracks_path")
+        kinematics = state.get("kinematics_path")
+        context = {
+            "tracks": json.load(open(tracks)) if tracks else [],
+            "kinematics": json.load(open(kinematics)) if kinematics else [],
+            "event_window": {
+                "start_s": state.get("event_window_start_s"),
+                "end_s": state.get("event_window_end_s"),
+                "source": state.get("event_window_source"),
+            },
+        }
+        video_path = state.get("processed_video_path") or state["video_path"]
+        narrative = backend.reason(video_path, json.dumps(context))
+
+        incident_dir = settings.upload_dir / state["incident_id"]
+        narrative_path = incident_dir / "narrative.json"
+        with open(narrative_path, "w") as f:
+            f.write(narrative.model_dump_json())
+
+        video_asset = db.get(VideoAsset, state["video_asset_id"])
+        if video_asset is not None:
+            video_asset.narrative_path = str(narrative_path)
+            video_asset.narrative_available = True
+            video_asset.narrative_error = None
+            db.commit()
+
+        return {**state, "narrative_path": str(narrative_path), "narrative_available": True, "narrative_error": None}
+    except Exception as exc:  # noqa: BLE001 - non-fatal: report generation flags the gap instead
+        video_asset = db.get(VideoAsset, state["video_asset_id"])
+        if video_asset is not None:
+            video_asset.narrative_available = False
+            video_asset.narrative_error = str(exc)
+            db.commit()
+        return {**state, "narrative_available": False, "narrative_error": str(exc)}
     finally:
         db.close()

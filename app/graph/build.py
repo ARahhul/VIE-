@@ -6,6 +6,7 @@ from app.graph.nodes import (
     ingest_node,
     kinematics_node,
     quality_gate_node,
+    video_llm_reasoning_node,
 )
 from app.graph.state import InvestigationState
 
@@ -14,7 +15,7 @@ def build_graph():
     """Compiles the investigation StateGraph.
 
     Ingest -> quality gate -> event detection -> detect & track -> kinematics
-    fusion are wired up so far. Later phases append video_llm_reasoning,
+    fusion -> video-LLM reasoning are wired up so far. Later phases append
     claim_verification, report_generation, and persist_and_serve to this same
     graph rather than introducing a second pipeline mechanism.
     """
@@ -24,12 +25,14 @@ def build_graph():
     graph.add_node("event_detection", event_detection_node)
     graph.add_node("detect_and_track", detect_and_track_node)
     graph.add_node("kinematics", kinematics_node)
+    graph.add_node("video_llm_reasoning", video_llm_reasoning_node)
     graph.set_entry_point("ingest")
     graph.add_edge("ingest", "quality_gate")
     graph.add_edge("quality_gate", "event_detection")
     graph.add_edge("event_detection", "detect_and_track")
     graph.add_edge("detect_and_track", "kinematics")
-    graph.add_edge("kinematics", END)
+    graph.add_edge("kinematics", "video_llm_reasoning")
+    graph.add_edge("video_llm_reasoning", END)
     return graph.compile()
 
 

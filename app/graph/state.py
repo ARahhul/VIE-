@@ -35,4 +35,8 @@ class InvestigationState(TypedDict, total=False):
     event_window_source: str | None
     event_window_confidence: str | None
 
+    narrative_path: str | None
+    narrative_available: bool
+    narrative_error: str | None
+
     error: str | None

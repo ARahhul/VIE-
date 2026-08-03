@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     langfuse_secret_key: str | None = None
     langfuse_host: str = "https://cloud.langfuse.com"
 
+    # Phase 6 — video-LLM reasoning backend. "none" until credentials exist;
+    # the graph node degrades gracefully (no narrative, no error) when unset
+    # rather than failing the whole investigation job.
+    video_llm_backend: str = "none"  # none | gemini | qwen_vl
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-pro"
+    qwen_vl_endpoint: str | None = None  # self-hosted OpenAI-compatible endpoint
+    qwen_vl_api_key: str | None = None
+    qwen_vl_model: str = "qwen3-vl-32b-instruct"
+
 
 settings = Settings()
 settings.upload_dir.mkdir(parents=True, exist_ok=True)
