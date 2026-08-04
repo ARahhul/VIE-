@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import cv2
+from langfuse.decorators import langfuse_context
 
 from app.core.config import settings
 from app.db.base import SessionLocal
@@ -13,6 +14,7 @@ from app.kinematics.ego import compute_ego_motion
 from app.kinematics.relative import compute_relative_motion
 from app.kinematics.sensor_log import load_sensor_log
 from app.llm.backends import get_backend
+from app.llm.context import build_context_summary
 from app.llm.schemas import InvestigationNarrative
 from app.perception.detect_track import detect_and_track, load_tracks
 from app.preprocessing.pipeline import run_quality_gate
@@ -48,6 +50,7 @@ def quality_gate_node(state: InvestigationState) -> InvestigationState:
             device_profile = db.get(DeviceProfile, state["device_id"])
 
         incident_dir = settings.upload_dir / state["incident_id"]
+        incident_dir.mkdir(parents=True, exist_ok=True)
         output_path = incident_dir / f"processed_{Path(state['video_path']).name}"
 
         result = run_quality_gate(state["video_path"], str(output_path), device_profile)
@@ -123,6 +126,7 @@ def detect_and_track_node(state: InvestigationState) -> InvestigationState:
     try:
         video_path = state.get("processed_video_path") or state["video_path"]
         incident_dir = settings.upload_dir / state["incident_id"]
+        incident_dir.mkdir(parents=True, exist_ok=True)
         tracks_path = incident_dir / "tracks.json"
 
         summary = detect_and_track(video_path, str(tracks_path))
@@ -177,6 +181,7 @@ def kinematics_node(state: InvestigationState) -> InvestigationState:
             method_summary = "mixed"
 
         incident_dir = settings.upload_dir / state["incident_id"]
+        incident_dir.mkdir(parents=True, exist_ok=True)
         kinematics_path = incident_dir / "kinematics.json"
         with open(kinematics_path, "w") as f:
             json.dump(
@@ -230,21 +235,23 @@ def video_llm_reasoning_node(state: InvestigationState) -> InvestigationState:
 
     db = SessionLocal()
     try:
-        tracks = state.get("tracks_path")
-        kinematics = state.get("kinematics_path")
-        context = {
-            "tracks": json.load(open(tracks)) if tracks else [],
-            "kinematics": json.load(open(kinematics)) if kinematics else [],
-            "event_window": {
+        kinematics_path = state.get("kinematics_path")
+        kinematics_points = json.load(open(kinematics_path)) if kinematics_path else []
+        context = build_context_summary(
+            state.get("tracks_path"),
+            kinematics_points,
+            {
                 "start_s": state.get("event_window_start_s"),
                 "end_s": state.get("event_window_end_s"),
                 "source": state.get("event_window_source"),
             },
-        }
+        )
         video_path = state.get("processed_video_path") or state["video_path"]
         narrative = backend.reason(video_path, json.dumps(context))
+        langfuse_context.flush()  # short-lived callers (CLI/benchmark) may exit before the background batcher fires
 
         incident_dir = settings.upload_dir / state["incident_id"]
+        incident_dir.mkdir(parents=True, exist_ok=True)
         narrative_path = incident_dir / "narrative.json"
         with open(narrative_path, "w") as f:
             f.write(narrative.model_dump_json())
@@ -258,6 +265,7 @@ def video_llm_reasoning_node(state: InvestigationState) -> InvestigationState:
 
         return {**state, "narrative_path": str(narrative_path), "narrative_available": True, "narrative_error": None}
     except Exception as exc:  # noqa: BLE001 - non-fatal: report generation flags the gap instead
+        langfuse_context.flush()
         video_asset = db.get(VideoAsset, state["video_asset_id"])
         if video_asset is not None:
             video_asset.narrative_available = False
@@ -323,6 +331,7 @@ def report_generation_node(state: InvestigationState) -> InvestigationState:
             return {**state, "error": "report_generation failed: video_asset not found"}
 
         incident_dir = settings.upload_dir / state["incident_id"]
+        incident_dir.mkdir(parents=True, exist_ok=True)
         ctx = build_report_context(video_asset, incident_dir / "evidence", state.get("sensor_log_path"))
         html = render_html(ctx)
         pdf_bytes = render_pdf(html)

@@ -1,5 +1,13 @@
-"""Benchmark harness: runs the quality-gate + detection pipeline against a
-folder of test clips and reports latency + quality metrics per clip.
+"""Benchmark harness: runs each clip through the *actual* compiled
+StateGraph (the same one /ingest uses) and reports per-clip latency plus
+whatever each node persisted, to CSV.
+
+Earlier versions of this script called run_quality_gate()/detect_and_track()
+directly, bypassing the graph — cheaper to iterate on, but it meant the
+benchmark could silently drift from what production actually does (wrong
+node order, a node that got added but not exercised here, etc.). Running
+compiled_graph.invoke() end to end is a few seconds slower per clip but is
+what the PRD's benchmarking deliverable is actually supposed to measure.
 
 Usage:
     python scripts/benchmark.py path/to/clips_dir [--out results.csv]
@@ -10,46 +18,74 @@ collected footage. No datasets ship with this repo; point it at whatever
 clips you have (including low-light/two-wheeler clips per the PRD's
 generalization risk — this harness doesn't distinguish scene type, so
 tag/organize input folders yourself if you want a breakdown by condition).
+
+Note: this uses whatever VIDEO_LLM_BACKEND/credentials are in your real
+.env, same as the running app — if a backend is configured, every clip
+makes a real video-LLM call. Set VIDEO_LLM_BACKEND=none in the environment
+you run this script from if you want quality-gate/detection-only timing
+without that cost.
 """
 
 import argparse
 import csv
+import os
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.perception.detect_track import detect_and_track
-from app.preprocessing.quality import assess_quality
-from app.preprocessing.pipeline import run_quality_gate
 
+def _benchmark_clip(clip_path: Path, compiled_graph, SessionLocal, Incident, VideoAsset) -> dict:
+    from app.graph.state import InvestigationState
 
-def benchmark_clip(clip_path: Path, work_dir: Path) -> dict:
     row = {"clip": clip_path.name}
 
-    t0 = time.perf_counter()
-    quality_pre = assess_quality(str(clip_path))
-    row["quality_score_pre"] = round(quality_pre.score, 3)
-    row["resolution"] = f"{quality_pre.width}x{quality_pre.height}"
-
-    processed_path = work_dir / f"processed_{clip_path.name}"
-    result = run_quality_gate(str(clip_path), str(processed_path))
-    row["quality_gate_s"] = round(time.perf_counter() - t0, 2)
-    row["was_upscaled"] = result.was_upscaled
-    row["quality_score_post"] = round(result.quality_post.score, 3)
-
-    t1 = time.perf_counter()
-    tracks_path = work_dir / f"tracks_{clip_path.stem}.json"
+    db = SessionLocal()
     try:
-        summary = detect_and_track(str(processed_path), str(tracks_path))
-        row["detect_track_s"] = round(time.perf_counter() - t1, 2)
-        row["num_tracks"] = summary.num_tracks
-    except Exception as exc:  # noqa: BLE001 - keep benchmarking the rest of the folder
-        row["detect_track_s"] = None
-        row["num_tracks"] = f"error: {exc}"
+        incident = Incident(device_id=None)
+        db.add(incident)
+        db.flush()
 
-    row["total_s"] = round(time.perf_counter() - t0, 2)
+        video_asset = VideoAsset(
+            incident_id=incident.id,
+            file_path=str(clip_path),
+            original_filename=clip_path.name,
+            size_bytes=clip_path.stat().st_size,
+            is_valid=True,
+        )
+        db.add(video_asset)
+        db.commit()
+        db.refresh(video_asset)
+
+        state: InvestigationState = {
+            "incident_id": incident.id,
+            "job_id": f"benchmark-{clip_path.stem}",
+            "video_asset_id": video_asset.id,
+            "video_path": str(clip_path),
+            "sensor_log_path": None,
+            "device_id": None,
+        }
+
+        t0 = time.perf_counter()
+        result = compiled_graph.invoke(state)
+        row["total_s"] = round(time.perf_counter() - t0, 2)
+        row["error"] = result.get("error")
+
+        db.refresh(video_asset)
+        row["resolution"] = f"{video_asset.width}x{video_asset.height}"
+        row["quality_score_pre"] = video_asset.quality_score_pre
+        row["quality_score_post"] = video_asset.quality_score_post
+        row["was_upscaled"] = video_asset.was_upscaled
+        row["num_tracks"] = video_asset.num_tracks
+        row["kinematics_method"] = video_asset.kinematics_method
+        row["event_window_source"] = video_asset.event_window_source
+        row["narrative_available"] = video_asset.narrative_available
+        row["narrative_verified"] = video_asset.narrative_verified
+        row["report_generated"] = bool(video_asset.report_path)
+    finally:
+        db.close()
+
     return row
 
 
@@ -57,6 +93,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("clips_dir", type=Path)
     parser.add_argument("--out", type=Path, default=Path("benchmark_results.csv"))
+    parser.add_argument(
+        "--db", type=Path, default=None, help="dedicated sqlite file for this run (default: <clips_dir>/_benchmark.db)"
+    )
     args = parser.parse_args()
 
     clips = sorted(
@@ -66,13 +105,24 @@ def main() -> None:
         print(f"no video clips found in {args.clips_dir}")
         return
 
-    work_dir = args.clips_dir / "_benchmark_work"
-    work_dir.mkdir(exist_ok=True)
+    # A dedicated DB file — never the dev server's or the test suite's —
+    # since this runs real graph.invoke() calls that persist to it.
+    db_path = args.db or (args.clips_dir / "_benchmark.db")
+    db_path.unlink(missing_ok=True)
+    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
+
+    from app.core.tracing import configure_tracing
+    from app.db.base import SessionLocal, init_db
+    from app.db.models import Incident, VideoAsset
+    from app.graph.build import compiled_graph
+
+    configure_tracing()  # must run before app.llm.backends' @observe decorators are used
+    init_db()
 
     rows = []
-    for clip in clips:
-        print(f"benchmarking {clip.name}...")
-        rows.append(benchmark_clip(clip, work_dir))
+    for i, clip in enumerate(clips, 1):
+        print(f"[{i}/{len(clips)}] benchmarking {clip.name}...")
+        rows.append(_benchmark_clip(clip, compiled_graph, SessionLocal, Incident, VideoAsset))
 
     with open(args.out, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))

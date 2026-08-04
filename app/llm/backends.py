@@ -1,10 +1,12 @@
 """Video-LLM backends. Two-pass grounding: coarse localization then fine
 reasoning, both prompts from app.llm.prompts (Langfuse-managed).
 
-Neither backend can be exercised in this environment (no API key / no
-self-hosted endpoint configured yet) — they're written to be correct once
-credentials exist, not to have been run here. get_backend() returns None
-when unconfigured so callers degrade gracefully instead of crashing.
+get_backend() returns None when no backend is configured so callers
+degrade gracefully instead of crashing. Each backend's reason() is traced
+to Langfuse via @observe — model, the compact per-track context, and the
+parsed narrative are all attached to the generation span, so a failure
+(e.g. a context-length error) shows up with the exact input that caused it,
+not just an exception message.
 """
 
 import base64
@@ -12,6 +14,7 @@ import json
 from abc import ABC, abstractmethod
 
 import cv2
+from langfuse.decorators import langfuse_context, observe
 
 from app.core.config import settings
 from app.llm.prompts import coarse_localization_prompt, fine_reasoning_prompt
@@ -67,14 +70,18 @@ class GeminiBackend(VideoLLMBackend):
         self._client = genai.Client(api_key=api_key)
         self._model = model
 
+    @observe(name="gemini_video_llm_reason", as_type="generation")
     def reason(self, video_path: str, context_data: str) -> InvestigationNarrative:
+        langfuse_context.update_current_observation(model=self._model, input={"video_path": video_path, "context_data": context_data})
         uploaded = self._client.files.upload(file=video_path)
         response = self._client.models.generate_content(
             model=self._model,
             contents=[uploaded, coarse_localization_prompt(), fine_reasoning_prompt(context_data)],
             config={"response_mime_type": "application/json"},
         )
-        return InvestigationNarrative.model_validate(json.loads(response.text))
+        narrative = InvestigationNarrative.model_validate(json.loads(response.text))
+        langfuse_context.update_current_observation(output=narrative.model_dump())
+        return narrative
 
 
 class QwenVLBackend(VideoLLMBackend):
@@ -91,7 +98,9 @@ class QwenVLBackend(VideoLLMBackend):
         self._client = OpenAI(base_url=endpoint, api_key=api_key or "not-needed")
         self._model = model
 
+    @observe(name="qwen_vl_reason", as_type="generation")
     def reason(self, video_path: str, context_data: str) -> InvestigationNarrative:
+        langfuse_context.update_current_observation(model=self._model, input={"video_path": video_path, "context_data": context_data})
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[
@@ -106,7 +115,9 @@ class QwenVLBackend(VideoLLMBackend):
             ],
             response_format={"type": "json_object"},
         )
-        return InvestigationNarrative.model_validate(json.loads(response.choices[0].message.content))
+        narrative = InvestigationNarrative.model_validate(json.loads(response.choices[0].message.content))
+        langfuse_context.update_current_observation(output=narrative.model_dump())
+        return narrative
 
 
 class NvidiaNIMBackend(VideoLLMBackend):
@@ -129,7 +140,9 @@ class NvidiaNIMBackend(VideoLLMBackend):
         self._model = model
         self._max_frames = max_frames
 
+    @observe(name="nvidia_nim_reason", as_type="generation")
     def reason(self, video_path: str, context_data: str) -> InvestigationNarrative:
+        langfuse_context.update_current_observation(model=self._model, input={"video_path": video_path, "context_data": context_data})
         frames = _sample_frames_as_data_urls(video_path, self._max_frames)
         if not frames:
             raise ValueError(f"no frames could be sampled from {video_path}")
@@ -148,7 +161,9 @@ class NvidiaNIMBackend(VideoLLMBackend):
             ],
             response_format={"type": "json_object"},
         )
-        return InvestigationNarrative.model_validate(json.loads(response.choices[0].message.content))
+        narrative = InvestigationNarrative.model_validate(json.loads(response.choices[0].message.content))
+        langfuse_context.update_current_observation(output=narrative.model_dump())
+        return narrative
 
 
 def get_backend() -> VideoLLMBackend | None:
