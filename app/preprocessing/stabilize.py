@@ -6,8 +6,19 @@ the correction needed to follow the smoothed path instead of the raw,
 suspension/handheld-shake-corrupted one.
 """
 
+import shutil
+
 import cv2
 import numpy as np
+
+# Below these, a frame-to-frame correction is noise, not shake worth
+# correcting. warpAffine's interpolation softens the image even for a
+# near-identity transform, so applying it unconditionally measurably (and
+# needlessly) degrades already-stable footage — verified on real dashcam
+# clips where every clip's post-pipeline blur score came out lower than
+# pre-pipeline, including clips that never needed stabilizing at all.
+PIXEL_CORRECTION_THRESHOLD = 0.75  # px
+ROTATION_CORRECTION_THRESHOLD = 0.003  # radians, ~0.17 degrees
 
 
 def _moving_average(curve: np.ndarray, radius: int) -> np.ndarray:
@@ -15,6 +26,10 @@ def _moving_average(curve: np.ndarray, radius: int) -> np.ndarray:
     kernel = np.ones(window) / window
     padded = np.pad(curve, (radius, radius), mode="edge")
     return np.convolve(padded, kernel, mode="same")[radius:-radius]
+
+
+def _is_negligible(dx: float, dy: float, da: float) -> bool:
+    return abs(dx) < PIXEL_CORRECTION_THRESHOLD and abs(dy) < PIXEL_CORRECTION_THRESHOLD and abs(da) < ROTATION_CORRECTION_THRESHOLD
 
 
 def stabilize_video(input_path: str, output_path: str, smoothing_radius: int = 5) -> bool:
@@ -30,8 +45,6 @@ def stabilize_video(input_path: str, output_path: str, smoothing_radius: int = 5
 
         if n_frames < 3:
             cap.release()
-            import shutil
-
             shutil.copyfile(input_path, output_path)
             return False
 
@@ -78,6 +91,16 @@ def stabilize_video(input_path: str, output_path: str, smoothing_radius: int = 5
         )
         corrections = smoothed - trajectory
 
+        # Clip-level gate: if the whole clip's corrections are negligible,
+        # skip stabilization entirely rather than resampling every frame
+        # through warpAffine for no real benefit.
+        if np.all(np.abs(corrections[:, :2]) < PIXEL_CORRECTION_THRESHOLD) and np.all(
+            np.abs(corrections[:, 2]) < ROTATION_CORRECTION_THRESHOLD
+        ):
+            cap.release()
+            shutil.copyfile(input_path, output_path)
+            return False
+
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
@@ -88,6 +111,12 @@ def stabilize_video(input_path: str, output_path: str, smoothing_radius: int = 5
                 ok, frame = cap.read()
                 if not ok:
                     break
+                # Per-frame gate: even within a clip that needs stabilizing
+                # overall, individual frames with a negligible correction are
+                # written unwarped rather than needlessly resampled.
+                if _is_negligible(dx, dy, da):
+                    writer.write(frame)
+                    continue
                 m = np.array(
                     [[np.cos(da), -np.sin(da), dx], [np.sin(da), np.cos(da), dy]],
                     dtype=np.float64,
