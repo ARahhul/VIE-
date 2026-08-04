@@ -33,12 +33,25 @@ class Settings(BaseSettings):
     # Phase 6 — video-LLM reasoning backend. "none" until credentials exist;
     # the graph node degrades gracefully (no narrative, no error) when unset
     # rather than failing the whole investigation job.
-    video_llm_backend: str = "none"  # none | gemini | qwen_vl
+    video_llm_backend: str = "none"  # none | gemini | qwen_vl | nvidia_nim
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-pro"
     qwen_vl_endpoint: str | None = None  # self-hosted OpenAI-compatible endpoint
     qwen_vl_api_key: str | None = None
     qwen_vl_model: str = "qwen3-vl-32b-instruct"
+
+    # NVIDIA NIM — free-tier hosted vision-language models (build.nvidia.com),
+    # OpenAI-compatible API. Not video-native like Qwen3-VL: a single frame
+    # is sampled and sent as an image instead of the whole clip. Verified
+    # live: the hosted llama-3.2-90b-vision-instruct endpoint rejects more
+    # than 1 image per request (400: "At most 1 image(s) may be provided in
+    # one request") unless you're running it yourself with
+    # --limit-mm-per-prompt raised, so this is a real API constraint, not
+    # an arbitrary default.
+    nvidia_nim_api_key: str | None = None
+    nvidia_nim_model: str = "meta/llama-3.2-90b-vision-instruct"
+    nvidia_nim_endpoint: str = "https://integrate.api.nvidia.com/v1"
+    nvidia_nim_max_frames: int = 1
 
 
 settings = Settings()

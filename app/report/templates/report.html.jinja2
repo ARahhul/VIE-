@@ -7,8 +7,12 @@
   body { font-family: Helvetica, Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 2em; }
   h1 { font-size: 18pt; border-bottom: 2px solid #1F4E79; padding-bottom: 6px; }
   h2 { font-size: 13pt; color: #1F4E79; margin-top: 1.6em; }
-  table { width: 100%; border-collapse: collapse; margin-top: 0.5em; }
-  th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; font-size: 9.5pt; }
+  /* table-layout: fixed matters more than usual here — without it,
+     xhtml2pdf (the Windows-dev fallback when WeasyPrint's native libs
+     aren't installed) computes pathologically narrow columns for
+     multi-column tables and wraps every cell one word per line. */
+  table { width: 100%; border-collapse: collapse; margin-top: 0.5em; table-layout: fixed; }
+  th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; font-size: 9.5pt; white-space: normal; word-wrap: break-word; }
   th { background: #DCE6F1; }
   .disclaimer { margin-top: 2em; padding: 10px; border: 1px solid #d99; background: #fff4f4; font-size: 9pt; }
   .gap-note { font-style: italic; color: #555; }
@@ -28,16 +32,19 @@
 
   <h2>Event Timeline</h2>
   {% if ctx.event_timeline %}
-  <table>
-    <tr><th>When</th><th>Who</th><th>What</th><th>Where</th><th>How</th><th>Confidence</th></tr>
+  <table class="event-timeline">
+    <tr>
+      <th width="12%">When</th><th width="12%">Who</th><th width="28%">What</th>
+      <th width="20%">Where</th><th width="20%">How</th><th width="8%">Confidence</th>
+    </tr>
     {% for claim in ctx.event_timeline %}
     <tr>
-      <td>{{ "%.1f"|format(claim.when_start_s) }}s&ndash;{{ "%.1f"|format(claim.when_end_s) }}s</td>
-      <td>{{ claim.who }}</td>
-      <td>{{ claim.what }}</td>
-      <td>{{ claim.where }}</td>
-      <td>{{ claim.how }}</td>
-      <td class="confidence-{{ claim.confidence }}">{{ claim.confidence }}</td>
+      <td width="12%">{{ "%.1f"|format(claim.when_start_s) }}s&ndash;{{ "%.1f"|format(claim.when_end_s) }}s</td>
+      <td width="12%">{{ claim.who }}</td>
+      <td width="28%">{{ claim.what }}</td>
+      <td width="20%">{{ claim.where }}</td>
+      <td width="20%">{{ claim.how }}</td>
+      <td width="8%" class="confidence-{{ claim.confidence }}">{{ claim.confidence }}</td>
     </tr>
     {% endfor %}
   </table>
