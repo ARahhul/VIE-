@@ -36,6 +36,18 @@ class Settings(BaseSettings):
     video_llm_backend: str = "none"  # none | gemini | qwen_vl | nvidia_nim
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-pro"
+
+    # Gemini via Vertex AI (GCP service-account auth) instead of a plain
+    # API key — used when google_genai_use_vertexai is true. Requires
+    # google_cloud_project and a service-account key file at
+    # google_application_credentials (standard GCP ADC env var; must be
+    # exported to real os.environ in configure_tracing(), same reason as
+    # Langfuse — google-auth's credential discovery reads raw os.environ,
+    # not this Settings object).
+    google_genai_use_vertexai: bool = False
+    google_cloud_project: str | None = None
+    google_cloud_location: str = "us-central1"
+    google_application_credentials: str | None = None
     qwen_vl_endpoint: str | None = None  # self-hosted OpenAI-compatible endpoint
     qwen_vl_api_key: str | None = None
     qwen_vl_model: str = "qwen3-vl-32b-instruct"
