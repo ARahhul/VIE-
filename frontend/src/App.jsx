@@ -1,7 +1,26 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import Background3D from './Background3D'
 import './App.css'
 
 const POLL_INTERVAL_MS = 1500
+
+const FEATURES = [
+  {
+    icon: 'timeline',
+    title: 'Neural Trajectory Mapping',
+    body: 'Detection, tracking, and speed estimation across every vehicle and pedestrian in the clip.',
+  },
+  {
+    icon: 'data_usage',
+    title: 'Sensor Data Fusion',
+    body: 'Ego-motion from OBD/GPS/IMU fused with vision-derived relative motion for a grounded speed estimate.',
+  },
+  {
+    icon: 'summarize',
+    title: 'Automated Report Generation',
+    body: 'A structured, claim-verified investigation report — descriptive only, never adjudicative.',
+  },
+]
 
 function App() {
   const videoInputRef = useRef(null)
@@ -14,6 +33,30 @@ function App() {
   const [jobStatus, setJobStatus] = useState(null)
   const [jobError, setJobError] = useState(null)
   const [videoAsset, setVideoAsset] = useState(null)
+
+  useEffect(() => {
+    const reveals = document.querySelectorAll('.reveal-up')
+    const timers = []
+    timers.push(
+      setTimeout(() => {
+        reveals.forEach((el, i) => {
+          timers.push(setTimeout(() => el.classList.add('active'), i * 100))
+        })
+      }, 100),
+    )
+
+    const onScroll = () => {
+      const windowHeight = window.innerHeight
+      reveals.forEach((el) => {
+        if (el.getBoundingClientRect().top < windowHeight - 50) el.classList.add('active')
+      })
+    }
+    window.addEventListener('scroll', onScroll)
+    return () => {
+      timers.forEach(clearTimeout)
+      window.removeEventListener('scroll', onScroll)
+    }
+  }, [])
 
   async function pollJob(id) {
     const poll = async () => {
@@ -70,63 +113,115 @@ function App() {
   const reportReady = jobStatus === 'completed'
 
   return (
-    <div className="page">
-      <h1>VigilNetra Investigation Engine</h1>
-      <p className="subtitle">Upload a clip to generate an investigation report.</p>
+    <>
+      <Background3D />
 
-      <form onSubmit={handleSubmit} className="upload-form">
-        <label>
-          Clip (video)
-          <input ref={videoInputRef} type="file" accept="video/*" required />
-        </label>
-        <label>
-          Sensor log (optional, JSON)
-          <input ref={sensorLogInputRef} type="file" accept="application/json" />
-        </label>
-        <label>
-          Device ID (optional)
-          <input
-            type="text"
-            value={deviceId}
-            onChange={(e) => setDeviceId(e.target.value)}
-            placeholder="vn-unit-001"
-          />
-        </label>
-        <button type="submit" disabled={uploading}>
-          {uploading ? 'Uploading…' : 'Upload & investigate'}
-        </button>
-      </form>
-
-      {error && <p className="error">{error}</p>}
-
-      {videoAsset && (
-        <div className="card">
-          <h2>Clip</h2>
-          <p>
-            {videoAsset.original_filename} — {videoAsset.width}x{videoAsset.height} @{' '}
-            {videoAsset.fps} fps, {videoAsset.duration_s?.toFixed(1)}s
-          </p>
+      <nav className="topnav">
+        <div className="topnav-brand">VIGILNETRA</div>
+        <div className="topnav-links">
+          <a href="#">Network</a>
+          <a href="#" className="active">
+            Telemetry
+          </a>
+          <a href="#">Archives</a>
+          <a href="#">Protocols</a>
         </div>
-      )}
-
-      {jobId && (
-        <div className="card">
-          <h2>Job</h2>
-          <p>
-            Incident <code>{incidentId}</code>
-          </p>
-          <p>
-            Status: <span className={`status status-${jobStatus}`}>{jobStatus}</span>
-          </p>
-          {jobError && <p className="error">{jobError}</p>}
-          {reportReady && (
-            <a className="button" href={`/incidents/${incidentId}/report`} target="_blank" rel="noreferrer">
-              Download report (PDF)
-            </a>
-          )}
+        <div className="topnav-actions">
+          <button type="button" className="live-status">
+            LIVE_STATUS
+          </button>
+          <span className="material-symbols-outlined icon-btn">settings</span>
+          <span className="material-symbols-outlined icon-btn">notifications_active</span>
         </div>
-      )}
-    </div>
+      </nav>
+
+      <main className="page">
+        <header className="hero reveal-up">
+          <h1>VigilNetra Investigation Engine</h1>
+          <p>Upload a clip to generate an investigation report.</p>
+        </header>
+
+        <section className="glass-panel upload-panel reveal-up glow-active">
+          <div className="hud-scanline" />
+          <form onSubmit={handleSubmit} className="upload-form">
+            <div className="field">
+              <label>Clip (video)</label>
+              <input ref={videoInputRef} type="file" accept="video/*" required />
+            </div>
+            <div className="field">
+              <label>Sensor log (optional, JSON)</label>
+              <input ref={sensorLogInputRef} type="file" accept="application/json" />
+            </div>
+            <div className="field">
+              <label>Device ID (optional)</label>
+              <input
+                type="text"
+                value={deviceId}
+                onChange={(e) => setDeviceId(e.target.value)}
+                placeholder="vn-unit-001"
+              />
+            </div>
+            <button type="submit" disabled={uploading} className="cta-button">
+              {uploading ? 'Uploading…' : 'Upload & investigate'}
+              <span className="material-symbols-outlined">arrow_forward</span>
+            </button>
+          </form>
+        </section>
+
+        {error && <p className="error reveal-up active">{error}</p>}
+
+        {videoAsset && (
+          <section className="glass-panel info-panel reveal-up active">
+            <h2>Clip</h2>
+            <p className="mono">
+              {videoAsset.original_filename} — {videoAsset.width}x{videoAsset.height} @{' '}
+              {videoAsset.fps} fps, {videoAsset.duration_s?.toFixed(1)}s
+            </p>
+          </section>
+        )}
+
+        {jobId && (
+          <section className="glass-panel info-panel reveal-up active">
+            <h2>Job</h2>
+            <p className="mono">
+              Incident <code>{incidentId}</code>
+            </p>
+            <p>
+              Status: <span className={`status status-${jobStatus}`}>{jobStatus}</span>
+            </p>
+            {jobError && <p className="error">{jobError}</p>}
+            {reportReady && (
+              <a className="cta-button" href={`/incidents/${incidentId}/report`} target="_blank" rel="noreferrer">
+                Download report (PDF)
+                <span className="material-symbols-outlined">arrow_forward</span>
+              </a>
+            )}
+          </section>
+        )}
+
+        <section className="features-grid">
+          {FEATURES.map((f, i) => (
+            <div className="glass-panel feature-card reveal-up" style={{ transitionDelay: `${i * 100}ms` }} key={f.title}>
+              <div className="feature-icon">
+                <span className="material-symbols-outlined">{f.icon}</span>
+              </div>
+              <h3>{f.title}</h3>
+              <p>{f.body}</p>
+            </div>
+          ))}
+        </section>
+      </main>
+
+      <footer className="site-footer">
+        <div className="footer-brand">VIGILNETRA</div>
+        <div className="footer-copy mono">© 2026 VIGILNETRA FORENSICS. ENCRYPTED_CONNECTION_ESTABLISHED.</div>
+        <div className="footer-links">
+          <a href="#">Legal_Ops</a>
+          <a href="#">API_Docs</a>
+          <a href="#">Security_Core</a>
+        </div>
+      </footer>
+    </>
   )
 }
 
