@@ -26,6 +26,18 @@
   .confidence-high { color: #146c2e; }
   .confidence-medium { color: #8a6d00; }
   .confidence-low { color: #b3261e; }
+  /* Claim cards, not a table, for the Event Timeline: xhtml2pdf (the
+     Windows-dev fallback renderer) reliably breaks free-form sentences one
+     word per line once a table column gets narrow — verified on real
+     narrative output, not just short test strings; a fixed-width fix that
+     worked for one clip's phrasing broke again on a longer one. A
+     paragraph in a full-width block wraps correctly in every renderer;
+     only ultra-narrow table cells are the problem, so the fix is to stop
+     putting free text in one. */
+  .claim-card { border: 1px solid #ccc; border-radius: 4px; padding: 10px 14px; margin: 0.6em 0; }
+  .claim-header { font-size: 9pt; color: #555; margin-bottom: 6px; font-weight: bold; }
+  .claim-card p { margin: 4px 0; font-size: 10pt; }
+  .claim-card .label { font-weight: bold; color: #1F4E79; }
 </style>
 </head>
 <body>
@@ -37,22 +49,18 @@
 
   <h2>Event Timeline</h2>
   {% if ctx.event_timeline %}
-  <table class="event-timeline">
-    <tr>
-      <th width="10%">When</th><th width="10%">Who</th><th width="26%">What</th>
-      <th width="18%">Where</th><th width="18%">How</th><th width="10%">Confidence</th>
-    </tr>
-    {% for claim in ctx.event_timeline %}
-    <tr>
-      <td width="10%">{{ "%.1f"|format(claim.when_start_s) }}s&ndash;{{ "%.1f"|format(claim.when_end_s) }}s</td>
-      <td width="10%">{{ claim.who }}</td>
-      <td width="26%">{{ claim.what }}</td>
-      <td width="18%">{{ claim.where }}</td>
-      <td width="18%">{{ claim.how }}</td>
-      <td width="10%" class="confidence-{{ claim.confidence }}">{{ claim.confidence }}</td>
-    </tr>
-    {% endfor %}
-  </table>
+  {% for claim in ctx.event_timeline %}
+  <div class="claim-card">
+    <div class="claim-header">
+      {{ "%.1f"|format(claim.when_start_s) }}s&ndash;{{ "%.1f"|format(claim.when_end_s) }}s
+      &middot; {{ claim.who }}
+      &middot; confidence: <span class="confidence-{{ claim.confidence }}">{{ claim.confidence }}</span>
+    </div>
+    <p><span class="label">What:</span> {{ claim.what }}</p>
+    <p><span class="label">Where:</span> {{ claim.where }}</p>
+    <p><span class="label">How:</span> {{ claim.how }}</p>
+  </div>
+  {% endfor %}
   {% else %}
   <p class="gap-note">No timestamped event narrative is available for this report.</p>
   {% endif %}
@@ -61,19 +69,19 @@
   {% if ctx.kinematics %}
   <table>
     <tr>
-      <th width="16%">Actor</th><th width="10%">Class</th>
-      <th width="12%">Min (m/s)</th><th width="12%">Max (m/s)</th><th width="13%">Mean (m/s)</th>
-      <th width="21%">Method</th><th width="16%">Confidence</th>
+      <th width="15%">Actor</th><th width="14%">Class</th>
+      <th width="10%">Min (m/s)</th><th width="10%">Max (m/s)</th><th width="11%">Mean (m/s)</th>
+      <th width="18%">Method</th><th width="14%">Confidence</th>
     </tr>
     {% for row in ctx.kinematics %}
     <tr>
-      <td width="16%">{{ row.actor }}</td>
-      <td width="10%">{{ row.class_name or "-" }}</td>
-      <td width="12%">{{ "%.1f"|format(row.min_speed_mps) }}</td>
-      <td width="12%">{{ "%.1f"|format(row.max_speed_mps) }}</td>
-      <td width="13%">{{ "%.1f"|format(row.mean_speed_mps) }}</td>
-      <td width="21%">{{ row.method }}</td>
-      <td width="16%" class="confidence-{{ row.confidence }}">{{ row.confidence }}</td>
+      <td width="15%">{{ row.actor }}</td>
+      <td width="14%">{{ row.class_name or "-" }}</td>
+      <td width="10%">{{ "%.1f"|format(row.min_speed_mps) }}</td>
+      <td width="10%">{{ "%.1f"|format(row.max_speed_mps) }}</td>
+      <td width="11%">{{ "%.1f"|format(row.mean_speed_mps) }}</td>
+      <td width="18%">{{ row.method }}</td>
+      <td width="14%" class="confidence-{{ row.confidence }}">{{ row.confidence }}</td>
     </tr>
     {% endfor %}
   </table>
