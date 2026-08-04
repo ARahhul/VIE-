@@ -64,7 +64,7 @@ def test_report_renders_pdf_with_and_without_narrative(tmp_path):
     )
 
     ctx = build_report_context(video_asset, tmp_path / "evidence")
-    assert "No video-LLM narrative" in ctx.executive_summary
+    assert "No narrative account of this event was generated" in ctx.executive_summary
     assert len(ctx.kinematics) == 1
     assert ctx.kinematics[0].actor == "track_id=1"
 
@@ -73,3 +73,26 @@ def test_report_renders_pdf_with_and_without_narrative(tmp_path):
 
     pdf_bytes = render_pdf(html)
     assert pdf_bytes[:4] == b"%PDF"
+
+
+def test_report_summary_never_leaks_raw_error_text(tmp_path):
+    """A failed narrative step must not dump its exception into the executive
+    summary — a real report once rendered '2 validation errors for
+    InvestigationNarrative ... errors.pydantic.dev/2.10/v/missing' as its
+    opening paragraph."""
+    video_asset = VideoAsset(
+        id="v2",
+        incident_id="i2",
+        file_path="unused.mp4",
+        original_filename="clip.mp4",
+        size_bytes=1,
+        narrative_available=False,
+        narrative_error="2 validation errors for InvestigationNarrative\nsummary\n  Field required "
+        "[type=missing, input_value={'start_s': 1.9}, input_type=dict]\n"
+        "For further information visit https://errors.pydantic.dev/2.10/v/missing",
+    )
+
+    ctx = build_report_context(video_asset, tmp_path / "evidence")
+
+    for leaked in ("validation error", "pydantic", "type=missing", "input_value"):
+        assert leaked not in ctx.executive_summary.lower()

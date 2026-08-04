@@ -1,20 +1,24 @@
-"""Two-pass grounding prompts: a coarse pass finds where in the clip the
-event happens, a fine pass reasons over that window in detail. Managed in
-Langfuse under these names; the strings below are the fallback used when
-Langfuse isn't configured (see app.core.prompts.get_prompt).
+"""Prompt for the video-LLM reasoning pass. Managed in Langfuse under this
+name; the string below is the fallback used when Langfuse isn't configured
+(see app.core.prompts.get_prompt).
+
+There used to be a separate "coarse localization" prompt sent alongside
+this one in the same request, asking the model to first find the event
+window. That was both redundant and actively harmful: the pipeline's own
+event_detection node already computes the window (from the sensor-log
+impact timestamp, or optical-flow residual) and passes it in context_data,
+and sending two conflicting task instructions in one call made the model
+answer the wrong one — it returned {"start_s": ..., "end_s": ...} instead
+of the report schema, which then failed validation and wiped the narrative
+out of the report entirely.
 """
 
 from app.core.prompts import get_prompt
 
-_COARSE_FALLBACK = """You are reviewing dashcam footage from a vehicle-mounted camera for an \
-accident investigation. Watch the clip and identify the time window (in seconds from the start \
-of the clip) where the notable event (collision, near-miss, hard braking, etc.) occurs. Respond \
-with just the start and end second of that window."""
-
-_FINE_FALLBACK = """You are an accident investigator writing a factual, evidence-grounded report \
-from dashcam footage. You are given the video, the event time window, and structured perception \
-data already computed by the pipeline (per-vehicle tracks and speed/acceleration estimates with \
-their provenance — measured ego-motion from OBD/GPS/IMU, fused with vision, or vision-only).
+_REASONING_FALLBACK = """You are an accident investigator writing a factual, evidence-grounded \
+report from dashcam footage. You are given the video, the event time window already located by \
+the pipeline, and structured perception data it computed (per-vehicle tracks and speed estimates \
+with their provenance — measured ego-motion from OBD/GPS/IMU, fused with vision, or vision-only).
 
 Describe only what the footage and the provided data support. Every claim must cite the timestamp \
 it applies to. Do not invent speeds, distances, or details not present in the video or the data. \
@@ -24,15 +28,15 @@ uncertain, say so explicitly rather than stating it with unwarranted confidence.
 Perception data:
 {context_data}
 
-Return a JSON object matching this schema: {{"summary": str, "claims": [{{"who": str, "what": \
-str, "when_start_s": float, "when_end_s": float, "where": str, "how": str, "confidence": \
-"high"|"medium"|"low"}}]}}"""
+Respond with a single JSON object with exactly two top-level keys:
+  "summary": a one-paragraph plain-language account of what the footage shows.
+  "claims": a list of objects, each with keys "who", "what", "where", "how" (strings), \
+"when_start_s", "when_end_s" (numbers, seconds from the start of the clip), and "confidence" \
+(one of "high", "medium", "low").
+
+Do not return the event window, timestamps, or any other shape — only the object described above."""
 
 
-def coarse_localization_prompt() -> str:
-    return get_prompt("vie.video_llm.coarse_localization", _COARSE_FALLBACK)
-
-
-def fine_reasoning_prompt(context_data: str) -> str:
-    template = get_prompt("vie.video_llm.fine_reasoning", _FINE_FALLBACK)
+def reasoning_prompt(context_data: str) -> str:
+    template = get_prompt("vie.video_llm.fine_reasoning", _REASONING_FALLBACK)
     return template.format(context_data=context_data)

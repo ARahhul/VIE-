@@ -1,5 +1,5 @@
-"""Video-LLM backends. Two-pass grounding: coarse localization then fine
-reasoning, both prompts from app.llm.prompts (Langfuse-managed).
+"""Video-LLM backends. Each takes the clip plus the pipeline's already-computed
+perception data and returns a structured narrative (see app.llm.prompts).
 
 get_backend() returns None when no backend is configured so callers
 degrade gracefully instead of crashing. Each backend's reason() is traced
@@ -17,8 +17,8 @@ import cv2
 from langfuse.decorators import langfuse_context, observe
 
 from app.core.config import settings
-from app.llm.prompts import coarse_localization_prompt, fine_reasoning_prompt
-from app.llm.schemas import InvestigationNarrative
+from app.llm.prompts import reasoning_prompt
+from app.llm.schemas import GEMINI_RESPONSE_SCHEMA, InvestigationNarrative
 
 
 def _sample_frames_as_data_urls(video_path: str, max_frames: int) -> list[tuple[float, str]]:
@@ -114,8 +114,15 @@ class GeminiBackend(VideoLLMBackend):
 
         response = self._client.models.generate_content(
             model=self._model,
-            contents=[video_part, coarse_localization_prompt(), fine_reasoning_prompt(context_data)],
-            config={"response_mime_type": "application/json"},
+            contents=[video_part, reasoning_prompt(context_data)],
+            # response_schema makes the shape a hard constraint rather than a
+            # request the model can drift from — belt-and-braces alongside the
+            # prompt now that a schema mismatch is a known real failure mode.
+            # Inline dict, not the Pydantic model: Vertex AI's schema
+            # converter rejects the $ref/$defs it emits for nested models
+            # (verified live — "Extra inputs are not permitted
+            # ... '#/$defs/EventClaim'").
+            config={"response_mime_type": "application/json", "response_schema": GEMINI_RESPONSE_SCHEMA},
         )
         narrative = InvestigationNarrative.model_validate(json.loads(response.text))
         langfuse_context.update_current_observation(output=narrative.model_dump())
@@ -142,12 +149,11 @@ class QwenVLBackend(VideoLLMBackend):
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[
-                {"role": "system", "content": coarse_localization_prompt()},
                 {
                     "role": "user",
                     "content": [
                         {"type": "video_url", "video_url": {"url": video_path}},
-                        {"type": "text", "text": fine_reasoning_prompt(context_data)},
+                        {"type": "text", "text": reasoning_prompt(context_data)},
                     ],
                 },
             ],
@@ -189,14 +195,11 @@ class NvidiaNIMBackend(VideoLLMBackend):
         for t, data_url in frames:
             content.append({"type": "text", "text": f"Frame at t={t:.2f}s:"})
             content.append({"type": "image_url", "image_url": {"url": data_url}})
-        content.append({"type": "text", "text": fine_reasoning_prompt(context_data)})
+        content.append({"type": "text", "text": reasoning_prompt(context_data)})
 
         response = self._client.chat.completions.create(
             model=self._model,
-            messages=[
-                {"role": "system", "content": coarse_localization_prompt()},
-                {"role": "user", "content": content},
-            ],
+            messages=[{"role": "user", "content": content}],
             response_format={"type": "json_object"},
         )
         narrative = InvestigationNarrative.model_validate(json.loads(response.choices[0].message.content))

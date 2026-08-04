@@ -12,7 +12,12 @@
      aren't installed) computes pathologically narrow columns for
      multi-column tables and wraps every cell one word per line. */
   table { width: 100%; border-collapse: collapse; margin-top: 0.5em; table-layout: fixed; }
-  th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; font-size: 9.5pt; white-space: normal; word-wrap: break-word; }
+  /* box-sizing: border-box matters here — without it, each cell's border
+     and padding add on top of its percentage width instead of being
+     included within it, and that adds up across a 6-7 column table into a
+     real overflow past the page edge (verified: "Confidence" column
+     header clipped in the rendered PDF). */
+  th, td { box-sizing: border-box; border: 1px solid #ccc; padding: 6px 8px; text-align: left; font-size: 9.5pt; white-space: normal; word-wrap: break-word; }
   th { background: #DCE6F1; }
   .disclaimer { margin-top: 2em; padding: 10px; border: 1px solid #d99; background: #fff4f4; font-size: 9pt; }
   .gap-note { font-style: italic; color: #555; }
@@ -34,17 +39,17 @@
   {% if ctx.event_timeline %}
   <table class="event-timeline">
     <tr>
-      <th width="12%">When</th><th width="12%">Who</th><th width="28%">What</th>
-      <th width="20%">Where</th><th width="20%">How</th><th width="8%">Confidence</th>
+      <th width="10%">When</th><th width="10%">Who</th><th width="26%">What</th>
+      <th width="18%">Where</th><th width="18%">How</th><th width="10%">Confidence</th>
     </tr>
     {% for claim in ctx.event_timeline %}
     <tr>
-      <td width="12%">{{ "%.1f"|format(claim.when_start_s) }}s&ndash;{{ "%.1f"|format(claim.when_end_s) }}s</td>
-      <td width="12%">{{ claim.who }}</td>
-      <td width="28%">{{ claim.what }}</td>
-      <td width="20%">{{ claim.where }}</td>
-      <td width="20%">{{ claim.how }}</td>
-      <td width="8%" class="confidence-{{ claim.confidence }}">{{ claim.confidence }}</td>
+      <td width="10%">{{ "%.1f"|format(claim.when_start_s) }}s&ndash;{{ "%.1f"|format(claim.when_end_s) }}s</td>
+      <td width="10%">{{ claim.who }}</td>
+      <td width="26%">{{ claim.what }}</td>
+      <td width="18%">{{ claim.where }}</td>
+      <td width="18%">{{ claim.how }}</td>
+      <td width="10%" class="confidence-{{ claim.confidence }}">{{ claim.confidence }}</td>
     </tr>
     {% endfor %}
   </table>
@@ -55,16 +60,20 @@
   <h2>Vehicle Kinematics</h2>
   {% if ctx.kinematics %}
   <table>
-    <tr><th>Actor</th><th>Class</th><th>Min speed (m/s)</th><th>Max speed (m/s)</th><th>Mean speed (m/s)</th><th>Method</th><th>Confidence</th></tr>
+    <tr>
+      <th width="16%">Actor</th><th width="10%">Class</th>
+      <th width="12%">Min (m/s)</th><th width="12%">Max (m/s)</th><th width="13%">Mean (m/s)</th>
+      <th width="21%">Method</th><th width="16%">Confidence</th>
+    </tr>
     {% for row in ctx.kinematics %}
     <tr>
-      <td>{{ row.actor }}</td>
-      <td>{{ row.class_name or "-" }}</td>
-      <td>{{ "%.1f"|format(row.min_speed_mps) }}</td>
-      <td>{{ "%.1f"|format(row.max_speed_mps) }}</td>
-      <td>{{ "%.1f"|format(row.mean_speed_mps) }}</td>
-      <td>{{ row.method }}</td>
-      <td class="confidence-{{ row.confidence }}">{{ row.confidence }}</td>
+      <td width="16%">{{ row.actor }}</td>
+      <td width="10%">{{ row.class_name or "-" }}</td>
+      <td width="12%">{{ "%.1f"|format(row.min_speed_mps) }}</td>
+      <td width="12%">{{ "%.1f"|format(row.max_speed_mps) }}</td>
+      <td width="13%">{{ "%.1f"|format(row.mean_speed_mps) }}</td>
+      <td width="21%">{{ row.method }}</td>
+      <td width="16%" class="confidence-{{ row.confidence }}">{{ row.confidence }}</td>
     </tr>
     {% endfor %}
   </table>
@@ -103,12 +112,12 @@
   <h2>Confidence Appendix</h2>
   {% if ctx.confidence_appendix %}
   <table>
-    <tr><th>Claim</th><th>Confidence</th><th>Source module</th></tr>
+    <tr><th width="52%">Claim</th><th width="16%">Confidence</th><th width="32%">Source module</th></tr>
     {% for entry in ctx.confidence_appendix %}
     <tr>
-      <td>{{ entry.claim }}</td>
-      <td class="confidence-{{ entry.confidence }}">{{ entry.confidence }}</td>
-      <td>{{ entry.source_module }}</td>
+      <td width="52%">{{ entry.claim }}</td>
+      <td width="16%" class="confidence-{{ entry.confidence }}">{{ entry.confidence }}</td>
+      <td width="32%">{{ entry.source_module }}</td>
     </tr>
     {% endfor %}
   </table>

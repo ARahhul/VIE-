@@ -179,13 +179,21 @@ def build_report_context(
             for c in narrative["claims"]
         ]
     else:
-        gap_note = (
-            "No video-LLM narrative is available for this report "
-            + (f"({video_asset.narrative_error})." if video_asset.narrative_error else "(no backend configured).")
-            + " The sections below reflect only the measured/computed pipeline output — perception "
-            "tracks and kinematics — not a generated account of the event."
+        # A raw exception/stack trace is not a report sentence — the previous
+        # version interpolated narrative_error verbatim into the executive
+        # summary, so a Pydantic validation failure rendered as a wall of
+        # "2 validation errors for InvestigationNarrative ... errors.pydantic.dev"
+        # where the reader expects prose. Keep the reason human-readable here;
+        # the full error is still recorded on the VideoAsset row for debugging.
+        reason = "no video-LLM backend is configured"
+        if video_asset.narrative_error:
+            reason = "the video-LLM reasoning step did not complete successfully"
+        executive_summary = (
+            f"No narrative account of this event was generated, because {reason}. "
+            "The sections below reflect only the measured and computed pipeline output — "
+            "detected objects, their tracks, and speed estimates — not a generated account "
+            "of what happened."
         )
-        executive_summary = gap_note
         event_timeline = []
         contributing_factors = []
         confidence_appendix = []

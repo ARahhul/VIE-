@@ -41,29 +41,18 @@ function App() {
   const [jobError, setJobError] = useState(null)
   const [videoAsset, setVideoAsset] = useState(null)
 
+  // Re-runs on every view change, not just mount. The reveal animation used
+  // to add an `active` class via direct querySelectorAll DOM manipulation in
+  // a mount-only effect — switching to Archives and back re-mounted the
+  // Telemetry elements without that class, and since the effect never re-ran,
+  // they stayed stuck at opacity:0 (invisible). Driving it from React state
+  // instead means remounted elements always get their visible state back.
+  const [revealed, setRevealed] = useState(false)
   useEffect(() => {
-    const reveals = document.querySelectorAll('.reveal-up')
-    const timers = []
-    timers.push(
-      setTimeout(() => {
-        reveals.forEach((el, i) => {
-          timers.push(setTimeout(() => el.classList.add('active'), i * 100))
-        })
-      }, 100),
-    )
-
-    const onScroll = () => {
-      const windowHeight = window.innerHeight
-      reveals.forEach((el) => {
-        if (el.getBoundingClientRect().top < windowHeight - 50) el.classList.add('active')
-      })
-    }
-    window.addEventListener('scroll', onScroll)
-    return () => {
-      timers.forEach(clearTimeout)
-      window.removeEventListener('scroll', onScroll)
-    }
-  }, [])
+    setRevealed(false)
+    const timer = setTimeout(() => setRevealed(true), 50)
+    return () => clearTimeout(timer)
+  }, [view])
 
   async function pollJob(id) {
     const poll = async () => {
@@ -157,12 +146,12 @@ function App() {
       <main className="page">
         {view === 'telemetry' && (
           <>
-        <header className="hero reveal-up">
+        <header className={`hero reveal-up${revealed ? ' active' : ''}`}>
           <h1>VigilNetra Investigation Engine</h1>
           <p>Upload a clip to generate an investigation report.</p>
         </header>
 
-        <section className="glass-panel upload-panel reveal-up glow-active">
+        <section className={`glass-panel upload-panel reveal-up glow-active${revealed ? ' active' : ''}`}>
           <div className="hud-scanline" />
           <form onSubmit={handleSubmit} className="upload-form">
             <div className="field">
@@ -222,7 +211,7 @@ function App() {
 
         <section className="features-grid">
           {FEATURES.map((f, i) => (
-            <div className="glass-panel feature-card reveal-up" style={{ transitionDelay: `${i * 100}ms` }} key={f.title}>
+            <div className={`glass-panel feature-card reveal-up${revealed ? ' active' : ''}`} style={{ transitionDelay: `${i * 100}ms` }} key={f.title}>
               <div className="feature-icon">
                 <span className="material-symbols-outlined">{f.icon}</span>
               </div>

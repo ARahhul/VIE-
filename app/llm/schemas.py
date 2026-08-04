@@ -22,3 +22,33 @@ class EventClaim(BaseModel):
 class InvestigationNarrative(BaseModel):
     summary: str
     claims: list[EventClaim]
+
+
+# Vertex AI's response_schema converter rejects the $ref/$defs indirection
+# that Pydantic emits for a nested model ("Extra inputs are not permitted
+# ... '#/$defs/EventClaim'"), so the constraint is spelled out inline and
+# fully expanded. `grounded` is deliberately absent: claim verification
+# sets it, not the model.
+GEMINI_RESPONSE_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "summary": {"type": "STRING"},
+        "claims": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "who": {"type": "STRING"},
+                    "what": {"type": "STRING"},
+                    "when_start_s": {"type": "NUMBER"},
+                    "when_end_s": {"type": "NUMBER"},
+                    "where": {"type": "STRING"},
+                    "how": {"type": "STRING"},
+                    "confidence": {"type": "STRING", "enum": ["high", "medium", "low"]},
+                },
+                "required": ["who", "what", "when_start_s", "when_end_s", "where", "how", "confidence"],
+            },
+        },
+    },
+    "required": ["summary", "claims"],
+}

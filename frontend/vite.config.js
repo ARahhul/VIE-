@@ -6,11 +6,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/ingest': 'http://localhost:8000',
-      '/jobs': 'http://localhost:8000',
-      '/incidents': 'http://localhost:8000',
-      '/device-profiles': 'http://localhost:8000',
-      '/health': 'http://localhost:8000',
+      '/ingest': 'http://localhost:8007',
+      '/jobs': 'http://localhost:8007',
+      '/incidents': 'http://localhost:8007',
+      '/device-profiles': 'http://localhost:8007',
+      '/health': 'http://localhost:8007',
     },
   },
 })
