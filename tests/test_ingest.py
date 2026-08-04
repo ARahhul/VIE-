@@ -51,6 +51,23 @@ def test_ingest_valid_clip_queues_and_completes_job(client, tmp_path):
     assert status == "completed", job.get("error")
 
 
+def test_list_incidents_reflects_uploaded_clips(client, tmp_path):
+    clip = _make_clip(tmp_path / "clip.mp4")
+
+    with clip.open("rb") as f:
+        resp = client.post("/ingest", files={"video": ("clip.mp4", f, "video/mp4")}, data={"device_id": "vn-002"})
+    incident_id = resp.json()["incident_id"]
+
+    listing = client.get("/incidents").json()
+    assert any(row["incident_id"] == incident_id for row in listing)
+
+    row = next(row for row in listing if row["incident_id"] == incident_id)
+    assert row["device_id"] == "vn-002"
+    assert row["original_filename"] == "clip.mp4"
+    assert row["job_status"] in ("queued", "running", "completed")
+    assert row["report_available"] is False
+
+
 def test_ingest_rejects_corrupt_file(client, tmp_path):
     bad = tmp_path / "bad.mp4"
     bad.write_text("not a video")

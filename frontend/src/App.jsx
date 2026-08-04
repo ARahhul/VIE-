@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import Archives from './Archives'
 import Background3D from './Background3D'
+import Protocols from './Protocols'
+import { playAlarm } from './alarm'
 import './App.css'
 
 const POLL_INTERVAL_MS = 1500
@@ -25,6 +28,10 @@ const FEATURES = [
 function App() {
   const videoInputRef = useRef(null)
   const sensorLogInputRef = useRef(null)
+  const [view, setView] = useState('telemetry')
+  const [alarmEnabled, setAlarmEnabled] = useState(true)
+  const alarmEnabledRef = useRef(alarmEnabled)
+  alarmEnabledRef.current = alarmEnabled
   const [deviceId, setDeviceId] = useState('')
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState(null)
@@ -66,6 +73,8 @@ function App() {
       setJobError(job.error)
       if (job.status === 'queued' || job.status === 'running') {
         setTimeout(poll, POLL_INTERVAL_MS)
+      } else if (job.status === 'completed' && alarmEnabledRef.current) {
+        playAlarm()
       }
     }
     poll()
@@ -119,23 +128,35 @@ function App() {
       <nav className="topnav">
         <div className="topnav-brand">VIGILNETRA</div>
         <div className="topnav-links">
-          <a href="#">Network</a>
-          <a href="#" className="active">
+          <button type="button" className={view === 'telemetry' ? 'active' : ''} onClick={() => setView('telemetry')}>
             Telemetry
-          </a>
-          <a href="#">Archives</a>
-          <a href="#">Protocols</a>
+          </button>
+          <button type="button" className={view === 'archives' ? 'active' : ''} onClick={() => setView('archives')}>
+            Archives
+          </button>
+          <button type="button" className={view === 'protocols' ? 'active' : ''} onClick={() => setView('protocols')}>
+            Protocols
+          </button>
         </div>
         <div className="topnav-actions">
           <button type="button" className="live-status">
             LIVE_STATUS
           </button>
-          <span className="material-symbols-outlined icon-btn">settings</span>
-          <span className="material-symbols-outlined icon-btn">notifications_active</span>
+          <span
+            className={`material-symbols-outlined icon-btn${alarmEnabled ? ' icon-btn-active' : ''}`}
+            title={alarmEnabled ? 'Alarm on — a sound plays when a report finishes' : 'Alarm off'}
+            onClick={() => setAlarmEnabled((v) => !v)}
+            role="button"
+            tabIndex={0}
+          >
+            {alarmEnabled ? 'notifications_active' : 'notifications_off'}
+          </span>
         </div>
       </nav>
 
       <main className="page">
+        {view === 'telemetry' && (
+          <>
         <header className="hero reveal-up">
           <h1>VigilNetra Investigation Engine</h1>
           <p>Upload a clip to generate an investigation report.</p>
@@ -210,6 +231,11 @@ function App() {
             </div>
           ))}
         </section>
+          </>
+        )}
+
+        {view === 'archives' && <Archives />}
+        {view === 'protocols' && <Protocols />}
       </main>
 
       <footer className="site-footer">
