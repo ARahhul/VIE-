@@ -9,3 +9,4 @@ credentials/
 uploads/*
 !uploads/.gitkeep
 Dataset/
+uvicorn*.log

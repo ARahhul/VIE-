@@ -47,9 +47,9 @@ class Settings(BaseSettings):
     # --limit-mm-per-prompt raised, so this is a real API constraint, not
     # an arbitrary default.
     nvidia_nim_api_key: str | None = None
-    nvidia_nim_model: str = "meta/llama-3.2-90b-vision-instruct"
+    nvidia_nim_model: str = "nvidia/nemotron-nano-12b-v2-vl"
     nvidia_nim_endpoint: str = "https://integrate.api.nvidia.com/v1"
-    nvidia_nim_max_frames: int = 1
+    nvidia_nim_max_frames: int = 6
 
 
 settings = Settings()

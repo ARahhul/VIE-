@@ -11,6 +11,7 @@ not just an exception message.
 
 import base64
 import json
+import re
 from abc import ABC, abstractmethod
 
 import cv2
@@ -19,6 +20,23 @@ from langfuse.decorators import langfuse_context, observe
 from app.core.config import settings
 from app.llm.prompts import reasoning_prompt
 from app.llm.schemas import InvestigationNarrative
+
+
+_JSON_FENCE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
+
+
+def _extract_json_object(text: str) -> str:
+    """Strip markdown code fences from a model response before json.loads.
+    Some hosted models (e.g. llama-3.2-*-vision-instruct on NVIDIA NIM) ignore
+    response_format=json_object and wrap the body in ```json ... ``` anyway."""
+    m = _JSON_FENCE.search(text)
+    if m:
+        return m.group(1)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        return text[start : end + 1]
+    return text
 
 
 def _sample_frames_as_data_urls(video_path: str, max_frames: int) -> list[tuple[float, str]]:
@@ -134,7 +152,8 @@ class NvidiaNIMBackend(VideoLLMBackend):
             messages=[{"role": "user", "content": content}],
             response_format={"type": "json_object"},
         )
-        narrative = InvestigationNarrative.model_validate(json.loads(response.choices[0].message.content))
+        raw = response.choices[0].message.content or ""
+        narrative = InvestigationNarrative.model_validate(json.loads(_extract_json_object(raw)))
         langfuse_context.update_current_observation(output=narrative.model_dump())
         return narrative
 
