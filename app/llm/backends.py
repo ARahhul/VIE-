@@ -18,7 +18,7 @@ from langfuse.decorators import langfuse_context, observe
 
 from app.core.config import settings
 from app.llm.prompts import reasoning_prompt
-from app.llm.schemas import GEMINI_RESPONSE_SCHEMA, InvestigationNarrative
+from app.llm.schemas import InvestigationNarrative
 
 
 def _sample_frames_as_data_urls(video_path: str, max_frames: int) -> list[tuple[float, str]]:
@@ -61,74 +61,6 @@ class VideoLLMBackend(ABC):
     def reason(self, video_path: str, context_data: str) -> InvestigationNarrative: ...
 
 
-MAX_INLINE_VIDEO_BYTES = 19 * 1024 * 1024  # Gemini inline-data request limit is ~20MB
-
-
-class GeminiBackend(VideoLLMBackend):
-    """Gemini 2.5/3 Pro via the google-genai SDK — the PRD's zero-shot-accuracy fallback.
-
-    Two auth modes: a plain API key, or Vertex AI with a GCP service
-    account (project + credentials file, no key). Vertex mode relies on
-    GOOGLE_APPLICATION_CREDENTIALS already being exported to real
-    os.environ by configure_tracing() — google-auth's ADC discovery reads
-    that directly, it doesn't go through this Settings object.
-
-    Sends the clip as inline bytes, not via client.files.upload(): verified
-    live that Vertex AI raises "Vertex AI does not support creating files.
-    You can upload files to GCS files instead" — the Files API is a
-    Developer-API-only (API-key mode) feature. Inline bytes work
-    identically in both auth modes, at the cost of a ~20MB size ceiling —
-    fine given clips are already trimmed to short event windows.
-    """
-
-    def __init__(
-        self,
-        model: str,
-        api_key: str | None = None,
-        use_vertexai: bool = False,
-        project: str | None = None,
-        location: str = "us-central1",
-    ):
-        from google import genai
-
-        if use_vertexai:
-            self._client = genai.Client(vertexai=True, project=project, location=location)
-        else:
-            self._client = genai.Client(api_key=api_key)
-        self._model = model
-
-    @observe(name="gemini_video_llm_reason", as_type="generation")
-    def reason(self, video_path: str, context_data: str) -> InvestigationNarrative:
-        from google.genai import types
-
-        langfuse_context.update_current_observation(model=self._model, input={"video_path": video_path, "context_data": context_data})
-
-        with open(video_path, "rb") as f:
-            video_bytes = f.read()
-        if len(video_bytes) > MAX_INLINE_VIDEO_BYTES:
-            raise ValueError(
-                f"{video_path} is {len(video_bytes)} bytes, over the {MAX_INLINE_VIDEO_BYTES}-byte inline limit "
-                "(GCS upload isn't wired up for the Vertex AI path yet)"
-            )
-        video_part = types.Part.from_bytes(data=video_bytes, mime_type="video/mp4")
-
-        response = self._client.models.generate_content(
-            model=self._model,
-            contents=[video_part, reasoning_prompt(context_data)],
-            # response_schema makes the shape a hard constraint rather than a
-            # request the model can drift from — belt-and-braces alongside the
-            # prompt now that a schema mismatch is a known real failure mode.
-            # Inline dict, not the Pydantic model: Vertex AI's schema
-            # converter rejects the $ref/$defs it emits for nested models
-            # (verified live — "Extra inputs are not permitted
-            # ... '#/$defs/EventClaim'").
-            config={"response_mime_type": "application/json", "response_schema": GEMINI_RESPONSE_SCHEMA},
-        )
-        narrative = InvestigationNarrative.model_validate(json.loads(response.text))
-        langfuse_context.update_current_observation(output=narrative.model_dump())
-        return narrative
-
-
 class QwenVLBackend(VideoLLMBackend):
     """Self-hosted Qwen3-VL behind an OpenAI-compatible endpoint (e.g. vLLM).
 
@@ -166,7 +98,7 @@ class QwenVLBackend(VideoLLMBackend):
 
 class NvidiaNIMBackend(VideoLLMBackend):
     """NVIDIA NIM (build.nvidia.com) hosted vision-language models — a
-    free-tier alternative when no Qwen3-VL/Gemini access is set up yet.
+    free-tier alternative when no self-hosted Qwen3-VL is set up yet.
 
     Not video-native like Qwen3-VL, and not even multi-frame by default: the
     hosted llama-3.2-90b-vision-instruct endpoint rejects more than 1 image
@@ -208,16 +140,6 @@ class NvidiaNIMBackend(VideoLLMBackend):
 
 
 def get_backend() -> VideoLLMBackend | None:
-    if settings.video_llm_backend == "gemini":
-        if settings.google_genai_use_vertexai and settings.google_cloud_project:
-            return GeminiBackend(
-                settings.gemini_model,
-                use_vertexai=True,
-                project=settings.google_cloud_project,
-                location=settings.google_cloud_location,
-            )
-        if settings.gemini_api_key:
-            return GeminiBackend(settings.gemini_model, api_key=settings.gemini_api_key)
     if settings.video_llm_backend == "qwen_vl" and settings.qwen_vl_endpoint:
         return QwenVLBackend(settings.qwen_vl_endpoint, settings.qwen_vl_api_key, settings.qwen_vl_model)
     if settings.video_llm_backend == "nvidia_nim" and settings.nvidia_nim_api_key:

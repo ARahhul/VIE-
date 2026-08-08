@@ -5,7 +5,8 @@ matters more here than anywhere else in the system): eyes-on/off-road,
 hands-on-wheel, head orientation. This genuinely needs a video-LLM pass
 (Phase 6) — there's no meaningful classical-CV substitute for "was the
 driver looking at the road" — so it's a documented stub until a model
-backend (Qwen3-VL/Gemini) with API credentials is wired up.
+backend (Qwen3-VL or another vision-language model) with API credentials
+is wired up.
 """
 
 from dataclasses import dataclass
@@ -20,6 +21,6 @@ class DriverStateObservation:
 
 def observe_driver_state(driver_facing_video_path: str, event_window_start_s: float, event_window_end_s: float) -> list[DriverStateObservation]:
     raise NotImplementedError(
-        "driver-state observation requires a video-LLM backend (Qwen3-VL or Gemini); "
+        "driver-state observation requires a video-LLM backend (Qwen3-VL or similar); "
         "wire this up once API credentials are configured (see app.core.config.settings)"
     )
