@@ -36,7 +36,8 @@ class Settings(BaseSettings):
     video_llm_backend: str = "none"  # none | qwen_vl | nvidia_nim
     qwen_vl_endpoint: str | None = None  # self-hosted OpenAI-compatible endpoint
     qwen_vl_api_key: str | None = None
-    qwen_vl_model: str = "qwen3-vl-32b-instruct"
+    qwen_vl_model: str = "qwen/qwen2.5-vl-7b"
+    qwen_vl_max_frames: int = 6
 
     # NVIDIA NIM — free-tier hosted vision-language models (build.nvidia.com),
     # OpenAI-compatible API. Not video-native like Qwen3-VL: a single frame
